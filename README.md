@@ -8,6 +8,8 @@ A small Windows utility written in Rust to **mute / unmute / toggle / check** th
 - Operates via system-level mute (CoreAudio `IAudioEndpointVolume`)
 - Tiny, fast, single `.exe` file
 - **Global hotkey support** - Listen mode with Ctrl+Shift+Alt shortcuts
+- **System tray icon** - Visual indicator with right-click menu to exit
+- **Silent background mode** - Run without console window
 - Useful for scripts, automation, or hardware macro buttons
 
 ## 🧰 Commands
@@ -42,11 +44,16 @@ mic_toggle.exe --listen --silent
 
 Press Ctrl+C to exit listen mode (when not running in silent mode).
 
+### System Tray Icon
+
+When running in listen mode, a system tray icon appears showing that the application is active. Right-click the icon to access the menu:
+- **Exit** - Close the application gracefully
+
 ### Silent Mode
 
 Use the `--silent` flag with `--listen` to spawn a detached background process without a console window. The command will return immediately after starting the background process.
 
-**Note:** When running in silent mode, you'll need to use Task Manager to terminate the `mic_toggle.exe` process.
+**Note:** When running in silent mode, you can exit the application by right-clicking the system tray icon and selecting "Exit", or by using Task Manager to terminate the `mic_toggle.exe` process.
 
 ## 🧩 Build Instructions
 

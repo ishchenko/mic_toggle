@@ -27,6 +27,56 @@ use global_hotkey::{
     hotkey::{HotKey, Code, Modifiers},
 };
 use hidapi::HidApi;
+use tray_icon::{
+    TrayIconBuilder, TrayIconEvent,
+    menu::{Menu, MenuEvent, MenuItem},
+    Icon,
+};
+
+// Create a simple microphone icon (16x16 pixels)
+fn create_tray_icon() -> Icon {
+    let width = 16;
+    let height = 16;
+    let mut rgba = vec![0u8; width * height * 4];
+
+    // Create a simple microphone shape (white on transparent)
+    for y in 0..height {
+        for x in 0..width {
+            let idx = (y * width + x) * 4;
+
+            // Microphone body (center vertical line)
+            if x >= 6 && x <= 9 && y >= 3 && y <= 9 {
+                rgba[idx] = 255;     // R
+                rgba[idx + 1] = 255; // G
+                rgba[idx + 2] = 255; // B
+                rgba[idx + 3] = 255; // A
+            }
+            // Microphone top (rounded)
+            else if y >= 2 && y <= 3 && x >= 7 && x <= 8 {
+                rgba[idx] = 255;
+                rgba[idx + 1] = 255;
+                rgba[idx + 2] = 255;
+                rgba[idx + 3] = 255;
+            }
+            // Microphone stand
+            else if y >= 10 && y <= 12 && x >= 7 && x <= 8 {
+                rgba[idx] = 255;
+                rgba[idx + 1] = 255;
+                rgba[idx + 2] = 255;
+                rgba[idx + 3] = 255;
+            }
+            // Base
+            else if y >= 12 && y <= 13 && x >= 5 && x <= 10 {
+                rgba[idx] = 255;
+                rgba[idx + 1] = 255;
+                rgba[idx + 2] = 255;
+                rgba[idx + 3] = 255;
+            }
+        }
+    }
+
+    Icon::from_rgba(rgba, width as u32, height as u32).expect("Failed to create icon")
+}
 
 fn get_endpoint_volume() -> Result<IAudioEndpointVolume> {
     unsafe {
@@ -182,8 +232,24 @@ fn listen_mode(epv: IAudioEndpointVolume, background: bool) -> Result<()> {
         println!("Hotkeys registered successfully. Listening...");
     }
 
+    // Create system tray icon with menu
+    let tray_menu = Menu::new();
+    let exit_item = MenuItem::new("Exit", true, None);
+    tray_menu.append(&exit_item)
+        .context("Failed to add Exit menu item")?;
+
+    let icon = create_tray_icon();
+    let _tray_icon = TrayIconBuilder::new()
+        .with_menu(Box::new(tray_menu))
+        .with_tooltip("Mic Toggle - Listening for hotkeys")
+        .with_icon(icon)
+        .build()
+        .context("Failed to create system tray icon")?;
+
     // Event loop with Windows message pump
-    let receiver = GlobalHotKeyEvent::receiver();
+    let hotkey_receiver = GlobalHotKeyEvent::receiver();
+    let menu_receiver = MenuEvent::receiver();
+
     loop {
         // Process Windows messages (required for global hotkeys to work on Windows)
         unsafe {
@@ -194,8 +260,18 @@ fn listen_mode(epv: IAudioEndpointVolume, background: bool) -> Result<()> {
             }
         }
 
+        // Check for menu events (Exit clicked)
+        if let Ok(event) = menu_receiver.try_recv() {
+            if event.id == exit_item.id() {
+                if !background {
+                    println!("Exiting...");
+                }
+                break;
+            }
+        }
+
         // Check for hotkey events
-        if let Ok(event) = receiver.try_recv() {
+        if let Ok(event) = hotkey_receiver.try_recv() {
             if event.state == global_hotkey::HotKeyState::Pressed {
                 let result = if event.id == hotkey_toggle.id() {
                     do_toggle(&epv)
@@ -218,6 +294,8 @@ fn listen_mode(epv: IAudioEndpointVolume, background: bool) -> Result<()> {
         // Small sleep to prevent busy-waiting
         thread::sleep(Duration::from_millis(10));
     }
+
+    Ok(())
 }
 
 fn main() -> Result<()> {
