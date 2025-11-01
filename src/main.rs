@@ -12,16 +12,13 @@ use windows::{
             IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator,
             Endpoints::IAudioEndpointVolume,
         },
-        System::{
-            Com::{
-                CoCreateInstance, CoInitializeEx, CoUninitialize,
-                CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
-            },
-            Console::GetConsoleWindow,
+        System::Com::{
+            CoCreateInstance, CoInitializeEx, CoUninitialize,
+            CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
         },
         UI::WindowsAndMessaging::{
-            PeekMessageA, TranslateMessage, DispatchMessageA, ShowWindow,
-            MSG, PM_REMOVE, SW_HIDE,
+            PeekMessageA, TranslateMessage, DispatchMessageA,
+            MSG, PM_REMOVE,
         },
     },
 };
