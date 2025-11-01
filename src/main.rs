@@ -14,7 +14,6 @@ use windows::{
         System::Com::{
             CoCreateInstance, CoInitializeEx, CoUninitialize,
             CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
-            StructuredStorage::PROPVARIANT, // можно не использовать явно, но пусть будет импорт
         },
         UI::WindowsAndMessaging::{PeekMessageA, TranslateMessage, DispatchMessageA, MSG, PM_REMOVE},
     },
