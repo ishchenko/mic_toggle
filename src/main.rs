@@ -150,15 +150,7 @@ fn do_hid_command() -> Result<()> {
 }
 
 fn listen_mode(epv: IAudioEndpointVolume, silent: bool) -> Result<()> {
-    if silent {
-        // Hide the console window
-        unsafe {
-            let console_window = GetConsoleWindow();
-            if console_window.0 != 0 {
-                ShowWindow(console_window, SW_HIDE);
-            }
-        }
-    } else {
+    if !silent {
         println!("Listen mode activated. Press Ctrl+C to exit.");
         println!("Hotkeys:");
         println!("  Ctrl+Shift+Alt+M - Toggle mute");
@@ -190,6 +182,18 @@ fn listen_mode(epv: IAudioEndpointVolume, silent: bool) -> Result<()> {
 
     if !silent {
         println!("Hotkeys registered successfully. Listening...");
+    }
+
+    // Hide console window AFTER successful initialization (only in silent mode)
+    // Add a small delay to ensure all initialization is complete
+    if silent {
+        thread::sleep(Duration::from_millis(500));
+        unsafe {
+            let console_window = GetConsoleWindow();
+            if console_window.0 != 0 {
+                ShowWindow(console_window, SW_HIDE);
+            }
+        }
     }
 
     // Event loop with Windows message pump
