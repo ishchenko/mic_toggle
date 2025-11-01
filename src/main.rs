@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::env;
 use std::thread;
 use std::time::Duration;
+use std::process::Command;
 use windows::{
     core::Result as WinResult,
     Win32::{
@@ -149,8 +150,8 @@ fn do_hid_command() -> Result<()> {
     Ok(())
 }
 
-fn listen_mode(epv: IAudioEndpointVolume, silent: bool) -> Result<()> {
-    if !silent {
+fn listen_mode(epv: IAudioEndpointVolume, background: bool) -> Result<()> {
+    if !background {
         println!("Listen mode activated. Press Ctrl+C to exit.");
         println!("Hotkeys:");
         println!("  Ctrl+Shift+Alt+M - Toggle mute");
@@ -180,20 +181,8 @@ fn listen_mode(epv: IAudioEndpointVolume, silent: bool) -> Result<()> {
     manager.register(hotkey_hid)
         .context("Failed to register HID hotkey (Ctrl+Shift+Alt+S)")?;
 
-    if !silent {
+    if !background {
         println!("Hotkeys registered successfully. Listening...");
-    }
-
-    // Hide console window AFTER successful initialization (only in silent mode)
-    // Add a small delay to ensure all initialization is complete
-    if silent {
-        thread::sleep(Duration::from_millis(500));
-        unsafe {
-            let console_window = GetConsoleWindow();
-            if console_window.0 != 0 {
-                ShowWindow(console_window, SW_HIDE);
-            }
-        }
     }
 
     // Event loop with Windows message pump
@@ -241,12 +230,45 @@ fn main() -> Result<()> {
     // Check for --silent flag (can be anywhere in args)
     let silent = args.iter().any(|arg| arg == "--silent");
 
+    // Check for internal __background flag (used when spawning detached process)
+    let is_background = args.iter().any(|arg| arg == "__background");
+
+    // If --silent is specified and we're NOT already the background process,
+    // spawn a detached process and exit
+    if silent && !is_background && (cmd == "--listen" || cmd == "-l") {
+        let exe_path = env::current_exe()
+            .context("Failed to get current executable path")?;
+
+        // Spawn detached process without console window
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+            Command::new(exe_path)
+                .arg("--listen")
+                .arg("__background")
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+                .context("Failed to spawn background process")?;
+
+            println!("Background process started.");
+            return Ok(());
+        }
+
+        #[cfg(not(windows))]
+        {
+            eprintln!("--silent mode is only supported on Windows");
+            return Ok(());
+        }
+    }
+
     let epv = get_endpoint_volume().context("Cannot get endpoint volume")?;
 
     let res = match cmd {
         "--listen" | "-l" => {
             // Don't uninitialize COM here - keep it for listen mode
-            return listen_mode(epv, silent);
+            return listen_mode(epv, is_background);
         }
         "status" => {
             unsafe {

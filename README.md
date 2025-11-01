@@ -44,9 +44,9 @@ Press Ctrl+C to exit listen mode (when not running in silent mode).
 
 ### Silent Mode
 
-Use the `--silent` flag with `--listen` to run the application in the background without showing a console window. This is perfect for auto-starting the application on system boot.
+Use the `--silent` flag with `--listen` to spawn a detached background process without a console window. The command will return immediately after starting the background process.
 
-**Note:** When running in silent mode, you'll need to use Task Manager to terminate the process, as the console window is hidden.
+**Note:** When running in silent mode, you'll need to use Task Manager to terminate the `mic_toggle.exe` process.
 
 ## 🧩 Build Instructions
 
