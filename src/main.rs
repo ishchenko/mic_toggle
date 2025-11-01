@@ -11,11 +11,17 @@ use windows::{
             IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator,
             Endpoints::IAudioEndpointVolume,
         },
-        System::Com::{
-            CoCreateInstance, CoInitializeEx, CoUninitialize,
-            CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+        System::{
+            Com::{
+                CoCreateInstance, CoInitializeEx, CoUninitialize,
+                CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+            },
+            Console::GetConsoleWindow,
         },
-        UI::WindowsAndMessaging::{PeekMessageA, TranslateMessage, DispatchMessageA, MSG, PM_REMOVE},
+        UI::WindowsAndMessaging::{
+            PeekMessageA, TranslateMessage, DispatchMessageA, ShowWindow,
+            MSG, PM_REMOVE, SW_HIDE,
+        },
     },
 };
 use global_hotkey::{
@@ -52,7 +58,7 @@ fn get_endpoint_volume() -> Result<IAudioEndpointVolume> {
 }
 
 fn print_usage() {
-    eprintln!("Usage: mic_toggle [toggle|mute|unmute|status|--listen]");
+    eprintln!("Usage: mic_toggle [toggle|mute|unmute|status|--listen [--silent]]");
     eprintln!("  toggle  - Toggle microphone mute state (default)");
     eprintln!("  mute    - Mute microphone");
     eprintln!("  unmute  - Unmute microphone");
@@ -62,6 +68,7 @@ fn print_usage() {
     eprintln!("             Ctrl+Shift+Alt+I - Mute");
     eprintln!("             Ctrl+Shift+Alt+U - Unmute");
     eprintln!("             Ctrl+Shift+Alt+S - Send HID command");
+    eprintln!("  --silent - Use with --listen to hide console window");
 }
 
 fn do_mute(epv: &IAudioEndpointVolume) -> Result<()> {
@@ -142,13 +149,23 @@ fn do_hid_command() -> Result<()> {
     Ok(())
 }
 
-fn listen_mode(epv: IAudioEndpointVolume) -> Result<()> {
-    println!("Listen mode activated. Press Ctrl+C to exit.");
-    println!("Hotkeys:");
-    println!("  Ctrl+Shift+Alt+M - Toggle mute");
-    println!("  Ctrl+Shift+Alt+I - Mute");
-    println!("  Ctrl+Shift+Alt+U - Unmute");
-    println!("  Ctrl+Shift+Alt+S - Send HID command");
+fn listen_mode(epv: IAudioEndpointVolume, silent: bool) -> Result<()> {
+    if silent {
+        // Hide the console window
+        unsafe {
+            let console_window = GetConsoleWindow();
+            if console_window.0 != 0 {
+                ShowWindow(console_window, SW_HIDE);
+            }
+        }
+    } else {
+        println!("Listen mode activated. Press Ctrl+C to exit.");
+        println!("Hotkeys:");
+        println!("  Ctrl+Shift+Alt+M - Toggle mute");
+        println!("  Ctrl+Shift+Alt+I - Mute");
+        println!("  Ctrl+Shift+Alt+U - Unmute");
+        println!("  Ctrl+Shift+Alt+S - Send HID command");
+    }
 
     let manager = GlobalHotKeyManager::new()
         .context("Failed to create hotkey manager")?;
@@ -171,7 +188,9 @@ fn listen_mode(epv: IAudioEndpointVolume) -> Result<()> {
     manager.register(hotkey_hid)
         .context("Failed to register HID hotkey (Ctrl+Shift+Alt+S)")?;
 
-    println!("Hotkeys registered successfully. Listening...");
+    if !silent {
+        println!("Hotkeys registered successfully. Listening...");
+    }
 
     // Event loop with Windows message pump
     let receiver = GlobalHotKeyEvent::receiver();
@@ -212,13 +231,18 @@ fn listen_mode(epv: IAudioEndpointVolume) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let cmd = env::args().nth(1).unwrap_or_else(|| "toggle".to_string());
+    let args: Vec<String> = env::args().collect();
+    let cmd = args.get(1).map(|s| s.as_str()).unwrap_or("toggle");
+
+    // Check for --silent flag (can be anywhere in args)
+    let silent = args.iter().any(|arg| arg == "--silent");
+
     let epv = get_endpoint_volume().context("Cannot get endpoint volume")?;
 
-    let res = match cmd.as_str() {
+    let res = match cmd {
         "--listen" | "-l" => {
             // Don't uninitialize COM here - keep it for listen mode
-            return listen_mode(epv);
+            return listen_mode(epv, silent);
         }
         "status" => {
             unsafe {
