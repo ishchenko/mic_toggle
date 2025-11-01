@@ -6,7 +6,8 @@ A small Windows utility written in Rust to **mute / unmute / toggle / check** th
 - Works on **Windows 10 / 11**
 - No admin rights required
 - Operates via system-level mute (CoreAudio `IAudioEndpointVolume`)
-- Tiny, fast, single `.exe` file (~1 MB)
+- Tiny, fast, single `.exe` file
+- **Global hotkey support** - Listen mode with Ctrl+Shift+Alt shortcuts
 - Useful for scripts, automation, or hardware macro buttons
 
 ## 🧰 Commands
@@ -15,8 +16,27 @@ A small Windows utility written in Rust to **mute / unmute / toggle / check** th
 mic_toggle.exe status   # Show current mute state
 mic_toggle.exe mute     # Mute microphone
 mic_toggle.exe unmute   # Unmute microphone
-mic_toggle.exe toggle   # Toggle mute/unmute
+mic_toggle.exe toggle   # Toggle mute/unmute (default)
+mic_toggle.exe --listen # Stay running and listen for global hotkeys
 ```
+
+### Listen Mode
+
+The `--listen` flag keeps the application running in the background and listens for global keyboard shortcuts:
+
+- **Ctrl+Shift+Alt+M** - Toggle mute/unmute
+- **Ctrl+Shift+Alt+I** - Mute microphone
+- **Ctrl+Shift+Alt+U** - Unmute microphone
+
+This is useful for always-on microphone control without needing to bind the executable to external macro software.
+
+```bash
+mic_toggle.exe --listen
+# or
+mic_toggle.exe -l
+```
+
+Press Ctrl+C to exit listen mode.
 
 ## 🧩 Build Instructions
 
