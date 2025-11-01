@@ -1,9 +1,11 @@
 use anyhow::{Context, Result};
 use std::env;
+use std::thread;
+use std::time::Duration;
 use windows::{
     core::Result as WinResult,
     Win32::{
-        Foundation::BOOL,
+        Foundation::{BOOL, HWND},
         Media::Audio::{
             eCapture, eCommunications, eMultimedia, EDataFlow, ERole,
             IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator,
@@ -14,6 +16,7 @@ use windows::{
             CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
             StructuredStorage::PROPVARIANT, // можно не использовать явно, но пусть будет импорт
         },
+        UI::WindowsAndMessaging::{PeekMessageA, TranslateMessage, DispatchMessageA, MSG, PM_REMOVE},
     },
 };
 use global_hotkey::{
@@ -113,10 +116,20 @@ fn listen_mode(epv: IAudioEndpointVolume) -> Result<()> {
 
     println!("Hotkeys registered successfully. Listening...");
 
-    // Event loop
+    // Event loop with Windows message pump
     let receiver = GlobalHotKeyEvent::receiver();
     loop {
-        if let Ok(event) = receiver.recv() {
+        // Process Windows messages (required for global hotkeys to work on Windows)
+        unsafe {
+            let mut msg = MSG::default();
+            while PeekMessageA(&mut msg, HWND(0), 0, 0, PM_REMOVE).as_bool() {
+                TranslateMessage(&msg);
+                DispatchMessageA(&msg);
+            }
+        }
+
+        // Check for hotkey events
+        if let Ok(event) = receiver.try_recv() {
             if event.state == global_hotkey::HotKeyState::Pressed {
                 let result = if event.id == hotkey_toggle.id() {
                     do_toggle(&epv)
@@ -133,6 +146,9 @@ fn listen_mode(epv: IAudioEndpointVolume) -> Result<()> {
                 }
             }
         }
+
+        // Small sleep to prevent busy-waiting
+        thread::sleep(Duration::from_millis(10));
     }
 }
 
