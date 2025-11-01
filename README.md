@@ -27,6 +27,7 @@ The `--listen` flag keeps the application running in the background and listens 
 - **Ctrl+Shift+Alt+M** - Toggle mute/unmute
 - **Ctrl+Shift+Alt+I** - Mute microphone
 - **Ctrl+Shift+Alt+U** - Unmute microphone
+- **Ctrl+Shift+Alt+S** - Send HID command (custom device control)
 
 This is useful for always-on microphone control without needing to bind the executable to external macro software.
 

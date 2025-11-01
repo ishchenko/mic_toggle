@@ -23,6 +23,7 @@ use global_hotkey::{
     GlobalHotKeyManager, GlobalHotKeyEvent,
     hotkey::{HotKey, Code, Modifiers},
 };
+use hidapi::HidApi;
 
 fn get_endpoint_volume() -> Result<IAudioEndpointVolume> {
     unsafe {
@@ -61,6 +62,7 @@ fn print_usage() {
     eprintln!("             Ctrl+Shift+Alt+M - Toggle mute");
     eprintln!("             Ctrl+Shift+Alt+I - Mute");
     eprintln!("             Ctrl+Shift+Alt+U - Unmute");
+    eprintln!("             Ctrl+Shift+Alt+S - Send HID command");
 }
 
 fn do_mute(epv: &IAudioEndpointVolume) -> Result<()> {
@@ -89,12 +91,65 @@ fn do_toggle(epv: &IAudioEndpointVolume) -> Result<()> {
     Ok(())
 }
 
+fn do_hid_command() -> Result<()> {
+    // VID/PID for the HID device
+    const VID: u16 = 0x0bda;
+    const PID: u16 = 0x1100;
+
+    // HID report buffer: 193 bytes. [0] — Report ID (0 in this case)
+    let mut buf = [0u8; 193];
+
+    // buf[1:3] = [0x40, 0xc6]
+    buf[1] = 0x40;
+    buf[2] = 0xC6;
+
+    // buf[7:12] = [0x20, 0x00, 0x6e, 0x00, 0x80]
+    buf[7]  = 0x20;
+    buf[8]  = 0x00;
+    buf[9]  = 0x6E;
+    buf[10] = 0x00;
+    buf[11] = 0x80;
+
+    // msg = struct.pack(">HBB", 0xe069, 0, 1)
+    // Big-endian u16 + two u8
+    let mut msg = [0u8; 4]; // 2 + 1 + 1
+    let e069 = 0xE069u16.to_be_bytes();
+    msg[0] = e069[0];
+    msg[1] = e069[1];
+    msg[2] = 0x00;
+    msg[3] = 0x01;
+
+    // buf[65:68] = [0x51, 0x81 + len(msg), 0x03]
+    // len(msg) == 4
+    buf[65] = 0x51;
+    buf[66] = 0x81 + (msg.len() as u8);
+    buf[67] = 0x03;
+
+    // buf[68:68+len(msg)] = msg
+    buf[68..68 + msg.len()].copy_from_slice(&msg);
+
+    // Initialize HID and write
+    let api = HidApi::new().context("init hidapi")?;
+    let device = api
+        .open(VID, PID)
+        .with_context(|| format!("open device {:04x}:{:04x}", VID, PID))?;
+
+    // hidapi::HidDevice::write expects 0th byte to be Report ID (0 if not used)
+    let written = device
+        .write(&buf)
+        .context("hid write failed")?;
+
+    println!("HID command sent ({} bytes)", written);
+    Ok(())
+}
+
 fn listen_mode(epv: IAudioEndpointVolume) -> Result<()> {
     println!("Listen mode activated. Press Ctrl+C to exit.");
     println!("Hotkeys:");
     println!("  Ctrl+Shift+Alt+M - Toggle mute");
     println!("  Ctrl+Shift+Alt+I - Mute");
     println!("  Ctrl+Shift+Alt+U - Unmute");
+    println!("  Ctrl+Shift+Alt+S - Send HID command");
 
     let manager = GlobalHotKeyManager::new()
         .context("Failed to create hotkey manager")?;
@@ -106,6 +161,7 @@ fn listen_mode(epv: IAudioEndpointVolume) -> Result<()> {
     let hotkey_toggle = HotKey::new(Some(modifiers), Code::KeyM);
     let hotkey_mute = HotKey::new(Some(modifiers), Code::KeyI);
     let hotkey_unmute = HotKey::new(Some(modifiers), Code::KeyU);
+    let hotkey_hid = HotKey::new(Some(modifiers), Code::KeyS);
 
     manager.register(hotkey_toggle)
         .context("Failed to register toggle hotkey (Ctrl+Shift+Alt+M)")?;
@@ -113,6 +169,8 @@ fn listen_mode(epv: IAudioEndpointVolume) -> Result<()> {
         .context("Failed to register mute hotkey (Ctrl+Shift+Alt+I)")?;
     manager.register(hotkey_unmute)
         .context("Failed to register unmute hotkey (Ctrl+Shift+Alt+U)")?;
+    manager.register(hotkey_hid)
+        .context("Failed to register HID hotkey (Ctrl+Shift+Alt+S)")?;
 
     println!("Hotkeys registered successfully. Listening...");
 
@@ -137,6 +195,8 @@ fn listen_mode(epv: IAudioEndpointVolume) -> Result<()> {
                     do_mute(&epv)
                 } else if event.id == hotkey_unmute.id() {
                     do_unmute(&epv)
+                } else if event.id == hotkey_hid.id() {
+                    do_hid_command()
                 } else {
                     continue;
                 };
