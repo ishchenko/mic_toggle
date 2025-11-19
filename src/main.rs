@@ -106,17 +106,26 @@ fn get_endpoint_volume() -> Result<IAudioEndpointVolume> {
 }
 
 fn print_usage() {
-    eprintln!("Usage: mic_toggle [toggle|mute|unmute|status|--listen [--silent]]");
-    eprintln!("  toggle  - Toggle microphone mute state (default)");
-    eprintln!("  mute    - Mute microphone");
-    eprintln!("  unmute  - Unmute microphone");
-    eprintln!("  status  - Show current mute status");
-    eprintln!("  --listen - Stay running and listen for hotkeys:");
-    eprintln!("             Ctrl+Shift+Alt+M - Toggle mute");
-    eprintln!("             Ctrl+Shift+Alt+I - Mute");
-    eprintln!("             Ctrl+Shift+Alt+U - Unmute");
-    eprintln!("             Ctrl+Shift+Alt+S - Send HID command");
-    eprintln!("  --silent - Use with --listen to hide console window");
+    eprintln!("Usage: mic_toggle [--once <action>] [--console]");
+    eprintln!();
+    eprintln!("By default, runs in background with system tray icon and listens for hotkeys.");
+    eprintln!();
+    eprintln!("Options:");
+    eprintln!("  --once <action>  Perform single action and exit (instead of listening)");
+    eprintln!("                   Actions: toggle, mute, unmute, status");
+    eprintln!("  --console        Show console window (instead of running in background)");
+    eprintln!();
+    eprintln!("Hotkeys (when listening):");
+    eprintln!("  Ctrl+Shift+Alt+M - Toggle mute");
+    eprintln!("  Ctrl+Shift+Alt+I - Mute");
+    eprintln!("  Ctrl+Shift+Alt+U - Unmute");
+    eprintln!("  Ctrl+Shift+Alt+S - Send HID command");
+    eprintln!();
+    eprintln!("Examples:");
+    eprintln!("  mic_toggle                    Run in background, listen for hotkeys");
+    eprintln!("  mic_toggle --console          Show console, listen for hotkeys");
+    eprintln!("  mic_toggle --once toggle      Toggle mute once and exit");
+    eprintln!("  mic_toggle --once status --console  Show status in console");
 }
 
 fn do_mute(epv: &IAudioEndpointVolume) -> Result<()> {
@@ -302,13 +311,45 @@ fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
     // Check for flags (can be anywhere in args)
-    let is_listen = args.iter().any(|arg| arg == "--listen" || arg == "-l");
-    let silent = args.iter().any(|arg| arg == "--silent");
+    let is_once = args.iter().any(|arg| arg == "--once");
+    let show_console = args.iter().any(|arg| arg == "--console");
     let is_background = args.iter().any(|arg| arg == "__background");
 
-    // If --silent is specified and we're NOT already the background process,
-    // spawn a detached process and exit
-    if silent && !is_background && is_listen {
+    // Handle --once mode (single action and exit)
+    if is_once {
+        let epv = get_endpoint_volume().context("Cannot get endpoint volume")?;
+
+        // Find the action command (first non-flag argument)
+        let cmd = args.iter()
+            .skip(1) // Skip executable name
+            .find(|arg| !arg.starts_with("--") && !arg.starts_with("-"))
+            .map(|s| s.as_str())
+            .unwrap_or("toggle");
+
+        let res = match cmd {
+            "status" => {
+                unsafe {
+                    let muted: BOOL = epv.GetMute()?;
+                    println!("Muted: {}", muted.as_bool());
+                }
+                Ok(())
+            }
+            "mute" => do_mute(&epv),
+            "unmute" => do_unmute(&epv),
+            "toggle" => do_toggle(&epv),
+            _ => {
+                print_usage();
+                Ok(())
+            }
+        };
+
+        unsafe { CoUninitialize(); }
+        return res;
+    }
+
+    // Default mode: listen for hotkeys
+    // If NOT --console and NOT already background, spawn background process
+    if !show_console && !is_background {
         let exe_path = env::current_exe()
             .context("Failed to get current executable path")?;
 
@@ -319,55 +360,23 @@ fn main() -> Result<()> {
             const CREATE_NO_WINDOW: u32 = 0x08000000;
 
             Command::new(exe_path)
-                .arg("--listen")
                 .arg("__background")
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
                 .context("Failed to spawn background process")?;
 
-            println!("Background process started.");
+            println!("Background process started. Check system tray for icon.");
             return Ok(());
         }
 
         #[cfg(not(windows))]
         {
-            eprintln!("--silent mode is only supported on Windows");
+            eprintln!("Background mode is only supported on Windows");
             return Ok(());
         }
     }
 
+    // Run listen mode (either in foreground with --console, or as background process)
     let epv = get_endpoint_volume().context("Cannot get endpoint volume")?;
-
-    // Handle --listen mode
-    if is_listen {
-        // Don't uninitialize COM here - keep it for listen mode
-        return listen_mode(epv, is_background);
-    }
-
-    // Handle single-action commands (first non-flag argument)
-    let cmd = args.iter()
-        .skip(1) // Skip executable name
-        .find(|arg| !arg.starts_with("--") && !arg.starts_with("-"))
-        .map(|s| s.as_str())
-        .unwrap_or("toggle");
-
-    let res = match cmd {
-        "status" => {
-            unsafe {
-                let muted: BOOL = epv.GetMute()?;
-                println!("Muted: {}", muted.as_bool());
-            }
-            Ok(())
-        }
-        "mute" => do_mute(&epv),
-        "unmute" => do_unmute(&epv),
-        "toggle" => do_toggle(&epv),
-        _ => {
-            print_usage();
-            Ok(())
-        }
-    };
-
-    unsafe { CoUninitialize(); }
-    res
+    listen_mode(epv, is_background)
 }

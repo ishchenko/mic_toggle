@@ -7,53 +7,58 @@ A small Windows utility written in Rust to **mute / unmute / toggle / check** th
 - No admin rights required
 - Operates via system-level mute (CoreAudio `IAudioEndpointVolume`)
 - Tiny, fast, single `.exe` file
-- **Global hotkey support** - Listen mode with Ctrl+Shift+Alt shortcuts
+- **Runs in background by default** - No console window, just system tray icon
+- **Global hotkey support** - Ctrl+Shift+Alt shortcuts for instant mute control
 - **System tray icon** - Visual indicator with right-click menu to exit
-- **Silent background mode** - Run without console window
-- Useful for scripts, automation, or hardware macro buttons
+- **One-time actions** - Can also perform single toggle/mute/unmute and exit
+- Useful for always-on microphone control, scripts, and automation
 
-## 🧰 Commands
+## 🧰 Usage
+
+### Default Mode (Background Listener)
+
+By default, `mic_toggle` runs in the background with a system tray icon and listens for global hotkeys:
 
 ```bash
-mic_toggle.exe status   # Show current mute state
-mic_toggle.exe mute     # Mute microphone
-mic_toggle.exe unmute   # Unmute microphone
-mic_toggle.exe toggle   # Toggle mute/unmute (default)
-mic_toggle.exe --listen # Stay running and listen for global hotkeys
+mic_toggle.exe              # Runs in background, shows tray icon
 ```
 
-### Listen Mode
-
-The `--listen` flag keeps the application running in the background and listens for global keyboard shortcuts:
-
+**Global Hotkeys:**
 - **Ctrl+Shift+Alt+M** - Toggle mute/unmute
 - **Ctrl+Shift+Alt+I** - Mute microphone
 - **Ctrl+Shift+Alt+U** - Unmute microphone
 - **Ctrl+Shift+Alt+S** - Send HID command (custom device control)
 
-This is useful for always-on microphone control without needing to bind the executable to external macro software.
+**System Tray:**
+- A microphone icon appears in your system tray
+- Right-click the icon and select "Exit" to close the application
+
+### Console Mode
+
+Show the console window while listening (useful for debugging):
 
 ```bash
-mic_toggle.exe --listen
-# or
-mic_toggle.exe -l
-
-# Run in background without console window
-mic_toggle.exe --listen --silent
+mic_toggle.exe --console    # Show console, listen for hotkeys
 ```
 
-Press Ctrl+C to exit listen mode (when not running in silent mode).
+Press Ctrl+C to exit.
 
-### System Tray Icon
+### One-Time Actions
 
-When running in listen mode, a system tray icon appears showing that the application is active. Right-click the icon to access the menu:
-- **Exit** - Close the application gracefully
+Perform a single action and exit (without staying in background):
 
-### Silent Mode
+```bash
+mic_toggle.exe --once status   # Show current mute state
+mic_toggle.exe --once mute     # Mute microphone
+mic_toggle.exe --once unmute   # Unmute microphone
+mic_toggle.exe --once toggle   # Toggle mute/unmute
+```
 
-Use the `--silent` flag with `--listen` to spawn a detached background process without a console window. The command will return immediately after starting the background process.
+You can combine with `--console` to see output:
 
-**Note:** When running in silent mode, you can exit the application by right-clicking the system tray icon and selecting "Exit", or by using Task Manager to terminate the `mic_toggle.exe` process.
+```bash
+mic_toggle.exe --once status --console
+```
 
 ## 🧩 Build Instructions
 
