@@ -10,6 +10,7 @@ A small Windows utility written in Rust to control the system microphone via **g
 - **Runs in background by default** - No console window, just system tray icon
 - **Global hotkey support** - Ctrl+Shift+Alt shortcuts for instant mute control
 - **System tray icon** - Visual indicator with right-click menu to exit
+- **COM port integration** - Send mic state to serial port for external device control
 - Perfect for always-on microphone control during calls, streaming, recording
 
 ## 🧰 Usage
@@ -49,6 +50,27 @@ mic_toggle.exe --console
 - Shows startup messages and hotkey events
 - Useful for troubleshooting
 - Press Ctrl+C to exit
+
+### COM Port Integration
+
+Send microphone state to a virtual COM port for integration with other devices/software:
+
+```bash
+mic_toggle.exe --port COM10
+```
+
+**Behavior:**
+- Writes to the specified COM port once per second
+- Writes `1` when microphone is **unmuted** (on)
+- Writes `0` when microphone is **muted** (off)
+- Automatically attempts to reconnect if port communication fails
+- Shows error on startup if port cannot be opened
+- Can be combined with `--console` for debugging: `mic_toggle.exe --port COM10 --console`
+
+**Use Cases:**
+- Control LED indicators based on mic state
+- Integrate with Arduino/microcontroller projects
+- Send mic status to other software via virtual COM ports
 
 ## 🧩 Build Instructions
 

@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use std::env;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::process::Command;
+use std::io::Write;
 use windows::{
     core::Result as WinResult,
     Win32::{
@@ -32,6 +33,7 @@ use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem},
     Icon,
 };
+use serialport::SerialPort;
 
 // Create a simple microphone icon (16x16 pixels)
 fn create_tray_icon() -> Icon {
@@ -106,12 +108,14 @@ fn get_endpoint_volume() -> Result<IAudioEndpointVolume> {
 }
 
 fn print_usage() {
-    eprintln!("Usage: mic_toggle [--console]");
+    eprintln!("Usage: mic_toggle [--console] [--port <COM_PORT>]");
     eprintln!();
     eprintln!("Runs in background with system tray icon and listens for global hotkeys.");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  --console        Show console window (instead of running in background)");
+    eprintln!("  --port <name>    Send mic state to COM port (e.g., --port COM10)");
+    eprintln!("                   Writes '1' when unmuted, '0' when muted, every second");
     eprintln!();
     eprintln!("Hotkeys:");
     eprintln!("  Ctrl+Shift+Alt+M - Toggle mute");
@@ -120,8 +124,9 @@ fn print_usage() {
     eprintln!("  Ctrl+Shift+Alt+S - Send HID command");
     eprintln!();
     eprintln!("Examples:");
-    eprintln!("  mic_toggle           Run in background with tray icon");
-    eprintln!("  mic_toggle --console Show console while listening (Ctrl+C to exit)");
+    eprintln!("  mic_toggle                Run in background with tray icon");
+    eprintln!("  mic_toggle --console      Show console while listening (Ctrl+C to exit)");
+    eprintln!("  mic_toggle --port COM10   Report mic state to COM10 every second");
 }
 
 fn do_mute(epv: &IAudioEndpointVolume) -> Result<()> {
@@ -202,7 +207,7 @@ fn do_hid_command() -> Result<()> {
     Ok(())
 }
 
-fn listen_mode(epv: IAudioEndpointVolume, background: bool) -> Result<()> {
+fn listen_mode(epv: IAudioEndpointVolume, background: bool, port_name: Option<String>) -> Result<()> {
     if !background {
         println!("Listen mode activated. Press Ctrl+C to exit.");
         println!("Hotkeys:");
@@ -210,6 +215,26 @@ fn listen_mode(epv: IAudioEndpointVolume, background: bool) -> Result<()> {
         println!("  Ctrl+Shift+Alt+I - Mute");
         println!("  Ctrl+Shift+Alt+U - Unmute");
         println!("  Ctrl+Shift+Alt+S - Send HID command");
+    }
+
+    // Initialize COM port if specified
+    let mut serial_port: Option<Box<dyn SerialPort>> = None;
+    if let Some(ref port) = port_name {
+        match serialport::new(port, 9600)
+            .timeout(Duration::from_millis(100))
+            .open()
+        {
+            Ok(port) => {
+                serial_port = Some(port);
+                if !background {
+                    println!("Connected to {}", port_name.as_ref().unwrap());
+                }
+            }
+            Err(e) => {
+                eprintln!("Error: Failed to open port {}: {}", port, e);
+                eprintln!("COM port communication will not be available.");
+            }
+        }
     }
 
     let manager = GlobalHotKeyManager::new()
@@ -254,6 +279,7 @@ fn listen_mode(epv: IAudioEndpointVolume, background: bool) -> Result<()> {
     // Event loop with Windows message pump
     let hotkey_receiver = GlobalHotKeyEvent::receiver();
     let menu_receiver = MenuEvent::receiver();
+    let mut last_port_write = Instant::now();
 
     loop {
         // Process Windows messages (required for global hotkeys to work on Windows)
@@ -296,6 +322,54 @@ fn listen_mode(epv: IAudioEndpointVolume, background: bool) -> Result<()> {
             }
         }
 
+        // Write mic state to COM port every second
+        if port_name.is_some() && last_port_write.elapsed() >= Duration::from_secs(1) {
+            last_port_write = Instant::now();
+
+            // Get current mic state
+            let is_muted = unsafe {
+                epv.GetMute().unwrap_or(BOOL(0)).as_bool()
+            };
+
+            // Write '1' if unmuted (mic is on), '0' if muted (mic is off)
+            let state_byte = if is_muted { b'0' } else { b'1' };
+
+            // Try to write to port, attempt reconnection if failed
+            if let Some(ref mut port) = serial_port {
+                if let Err(e) = port.write_all(&[state_byte]) {
+                    if !background {
+                        eprintln!("COM port write error: {}. Will retry...", e);
+                    }
+                    // Drop the failed port, try to reconnect next time
+                    serial_port = None;
+                }
+            }
+
+            // Try to reconnect if port is None
+            if serial_port.is_none() && port_name.is_some() {
+                if let Some(ref port_str) = port_name {
+                    match serialport::new(port_str, 9600)
+                        .timeout(Duration::from_millis(100))
+                        .open()
+                    {
+                        Ok(port) => {
+                            serial_port = Some(port);
+                            if !background {
+                                println!("Reconnected to {}", port_str);
+                            }
+                            // Try to write the state immediately after reconnection
+                            if let Some(ref mut port) = serial_port {
+                                let _ = port.write_all(&[state_byte]);
+                            }
+                        }
+                        Err(_) => {
+                            // Silently fail, will retry next second
+                        }
+                    }
+                }
+            }
+        }
+
         // Small sleep to prevent busy-waiting
         thread::sleep(Duration::from_millis(10));
     }
@@ -310,6 +384,12 @@ fn main() -> Result<()> {
     let show_console = args.iter().any(|arg| arg == "--console");
     let is_background = args.iter().any(|arg| arg == "__background");
 
+    // Parse --port parameter
+    let port_name = args.iter()
+        .position(|arg| arg == "--port")
+        .and_then(|i| args.get(i + 1))
+        .cloned();
+
     // If NOT --console and NOT already background, spawn background process
     if !show_console && !is_background {
         let exe_path = env::current_exe()
@@ -321,9 +401,15 @@ fn main() -> Result<()> {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-            Command::new(exe_path)
-                .arg("__background")
-                .creation_flags(CREATE_NO_WINDOW)
+            let mut cmd = Command::new(exe_path);
+            cmd.arg("__background");
+
+            // Pass --port parameter to background process if specified
+            if let Some(ref port) = port_name {
+                cmd.arg("--port").arg(port);
+            }
+
+            cmd.creation_flags(CREATE_NO_WINDOW)
                 .spawn()
                 .context("Failed to spawn background process")?;
 
@@ -340,5 +426,5 @@ fn main() -> Result<()> {
 
     // Run listen mode (either in foreground with --console, or as background process)
     let epv = get_endpoint_volume().context("Cannot get endpoint volume")?;
-    listen_mode(epv, is_background)
+    listen_mode(epv, is_background, port_name)
 }
