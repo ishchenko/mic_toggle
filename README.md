@@ -1,6 +1,6 @@
 # mic_toggle
 
-A small Windows utility written in Rust to **mute / unmute / toggle / check** the system microphone using the Windows CoreAudio API.
+A small Windows utility written in Rust to control the system microphone via **global hotkeys**. Runs in the background with a system tray icon, using the Windows CoreAudio API for system-level mute control.
 
 ## ✨ Features
 - Works on **Windows 10 / 11**
@@ -10,18 +10,23 @@ A small Windows utility written in Rust to **mute / unmute / toggle / check** th
 - **Runs in background by default** - No console window, just system tray icon
 - **Global hotkey support** - Ctrl+Shift+Alt shortcuts for instant mute control
 - **System tray icon** - Visual indicator with right-click menu to exit
-- **One-time actions** - Can also perform single toggle/mute/unmute and exit
-- Useful for always-on microphone control, scripts, and automation
+- Perfect for always-on microphone control during calls, streaming, recording
 
 ## 🧰 Usage
 
-### Default Mode (Background Listener)
+### Default Mode (Background with Tray Icon)
 
-By default, `mic_toggle` runs in the background with a system tray icon and listens for global hotkeys:
+Simply run the executable to start listening for hotkeys in the background:
 
 ```bash
-mic_toggle.exe              # Runs in background, shows tray icon
+mic_toggle.exe
 ```
+
+**What happens:**
+- ✅ Starts in background (no console window)
+- ✅ Adds microphone icon to system tray
+- ✅ Listens for global hotkeys
+- ✅ Stays active until you exit from tray menu
 
 **Global Hotkeys:**
 - **Ctrl+Shift+Alt+M** - Toggle mute/unmute
@@ -29,36 +34,21 @@ mic_toggle.exe              # Runs in background, shows tray icon
 - **Ctrl+Shift+Alt+U** - Unmute microphone
 - **Ctrl+Shift+Alt+S** - Send HID command (custom device control)
 
-**System Tray:**
-- A microphone icon appears in your system tray
-- Right-click the icon and select "Exit" to close the application
+**To Exit:**
+- Right-click the tray icon and select "Exit"
+- Or use Task Manager to terminate the process
 
-### Console Mode
+### Console Mode (For Debugging)
 
-Show the console window while listening (useful for debugging):
-
-```bash
-mic_toggle.exe --console    # Show console, listen for hotkeys
-```
-
-Press Ctrl+C to exit.
-
-### One-Time Actions
-
-Perform a single action and exit (without staying in background):
+Show the console window while listening:
 
 ```bash
-mic_toggle.exe --once status   # Show current mute state
-mic_toggle.exe --once mute     # Mute microphone
-mic_toggle.exe --once unmute   # Unmute microphone
-mic_toggle.exe --once toggle   # Toggle mute/unmute
+mic_toggle.exe --console
 ```
 
-You can combine with `--console` to see output:
-
-```bash
-mic_toggle.exe --once status --console
-```
+- Shows startup messages and hotkey events
+- Useful for troubleshooting
+- Press Ctrl+C to exit
 
 ## 🧩 Build Instructions
 

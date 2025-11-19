@@ -106,26 +106,22 @@ fn get_endpoint_volume() -> Result<IAudioEndpointVolume> {
 }
 
 fn print_usage() {
-    eprintln!("Usage: mic_toggle [--once <action>] [--console]");
+    eprintln!("Usage: mic_toggle [--console]");
     eprintln!();
-    eprintln!("By default, runs in background with system tray icon and listens for hotkeys.");
+    eprintln!("Runs in background with system tray icon and listens for global hotkeys.");
     eprintln!();
     eprintln!("Options:");
-    eprintln!("  --once <action>  Perform single action and exit (instead of listening)");
-    eprintln!("                   Actions: toggle, mute, unmute, status");
     eprintln!("  --console        Show console window (instead of running in background)");
     eprintln!();
-    eprintln!("Hotkeys (when listening):");
+    eprintln!("Hotkeys:");
     eprintln!("  Ctrl+Shift+Alt+M - Toggle mute");
     eprintln!("  Ctrl+Shift+Alt+I - Mute");
     eprintln!("  Ctrl+Shift+Alt+U - Unmute");
     eprintln!("  Ctrl+Shift+Alt+S - Send HID command");
     eprintln!();
     eprintln!("Examples:");
-    eprintln!("  mic_toggle                    Run in background, listen for hotkeys");
-    eprintln!("  mic_toggle --console          Show console, listen for hotkeys");
-    eprintln!("  mic_toggle --once toggle      Toggle mute once and exit");
-    eprintln!("  mic_toggle --once status --console  Show status in console");
+    eprintln!("  mic_toggle           Run in background with tray icon");
+    eprintln!("  mic_toggle --console Show console while listening (Ctrl+C to exit)");
 }
 
 fn do_mute(epv: &IAudioEndpointVolume) -> Result<()> {
@@ -311,43 +307,9 @@ fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
     // Check for flags (can be anywhere in args)
-    let is_once = args.iter().any(|arg| arg == "--once");
     let show_console = args.iter().any(|arg| arg == "--console");
     let is_background = args.iter().any(|arg| arg == "__background");
 
-    // Handle --once mode (single action and exit)
-    if is_once {
-        let epv = get_endpoint_volume().context("Cannot get endpoint volume")?;
-
-        // Find the action command (first non-flag argument)
-        let cmd = args.iter()
-            .skip(1) // Skip executable name
-            .find(|arg| !arg.starts_with("--") && !arg.starts_with("-"))
-            .map(|s| s.as_str())
-            .unwrap_or("toggle");
-
-        let res = match cmd {
-            "status" => {
-                unsafe {
-                    let muted: BOOL = epv.GetMute()?;
-                    println!("Muted: {}", muted.as_bool());
-                }
-                Ok(())
-            }
-            "mute" => do_mute(&epv),
-            "unmute" => do_unmute(&epv),
-            "toggle" => do_toggle(&epv),
-            _ => {
-                print_usage();
-                Ok(())
-            }
-        };
-
-        unsafe { CoUninitialize(); }
-        return res;
-    }
-
-    // Default mode: listen for hotkeys
     // If NOT --console and NOT already background, spawn background process
     if !show_console && !is_background {
         let exe_path = env::current_exe()
