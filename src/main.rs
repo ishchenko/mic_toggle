@@ -300,17 +300,15 @@ fn listen_mode(epv: IAudioEndpointVolume, background: bool) -> Result<()> {
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
-    let cmd = args.get(1).map(|s| s.as_str()).unwrap_or("toggle");
 
-    // Check for --silent flag (can be anywhere in args)
+    // Check for flags (can be anywhere in args)
+    let is_listen = args.iter().any(|arg| arg == "--listen" || arg == "-l");
     let silent = args.iter().any(|arg| arg == "--silent");
-
-    // Check for internal __background flag (used when spawning detached process)
     let is_background = args.iter().any(|arg| arg == "__background");
 
     // If --silent is specified and we're NOT already the background process,
     // spawn a detached process and exit
-    if silent && !is_background && (cmd == "--listen" || cmd == "-l") {
+    if silent && !is_background && is_listen {
         let exe_path = env::current_exe()
             .context("Failed to get current executable path")?;
 
@@ -340,11 +338,20 @@ fn main() -> Result<()> {
 
     let epv = get_endpoint_volume().context("Cannot get endpoint volume")?;
 
+    // Handle --listen mode
+    if is_listen {
+        // Don't uninitialize COM here - keep it for listen mode
+        return listen_mode(epv, is_background);
+    }
+
+    // Handle single-action commands (first non-flag argument)
+    let cmd = args.iter()
+        .skip(1) // Skip executable name
+        .find(|arg| !arg.starts_with("--") && !arg.starts_with("-"))
+        .map(|s| s.as_str())
+        .unwrap_or("toggle");
+
     let res = match cmd {
-        "--listen" | "-l" => {
-            // Don't uninitialize COM here - keep it for listen mode
-            return listen_mode(epv, is_background);
-        }
         "status" => {
             unsafe {
                 let muted: BOOL = epv.GetMute()?;
